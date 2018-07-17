@@ -1,0 +1,148 @@
+---
+- name: Everything
+  hosts: 52.21.252.76
+  become: true 
+  become_user: root
+  become_method: sudo
+  remote_user: ubuntu
+
+  tasks:
+   - name: update /etc/apt/sources.list
+     blockinfile: 
+      dest: /etc/apt/sources.list
+      block: |
+       deb http://us.archive.ubuntu.com/ubuntu/ bionic main restricted
+       deb http://us.archive.ubuntu.com/ubuntu/ bionic-updates main restricted
+       deb http://us.archive.ubuntu.com/ubuntu/ bionic universe
+       deb http://us.archive.ubuntu.com/ubuntu/ bionic-updates universe
+       deb http://us.archive.ubuntu.com/ubuntu/ bionic multiverse
+       deb http://us.archive.ubuntu.com/ubuntu/ bionic-updates multiverse
+       deb http://us.archive.ubuntu.com/ubuntu/ bionic-backports main restricted universe multiverse universe multiverse
+       deb http://security.ubuntu.com/ubuntu bionic-security main restricted
+       deb http://security.ubuntu.com/ubuntu bionic-security universe
+       deb http://security.ubuntu.com/ubuntu bionic-security multiverse
+      backup: yes
+
+   - pause: seconds=20
+   
+   - name:  install nginx
+     apt: name=nginx state=latest
+
+   - name:  install python-pip
+     apt: name=python-pip state=latest
+
+   - name:  install awscli
+     apt: name=awscli state=latest
+
+   - name:  install boto3
+     command: "/usr/bin/pip install boto3"
+
+   - name:  install botocore
+     command: "/usr/bin/pip install botocore"
+
+   - name: create mount pount
+     file: 
+      path: /data 
+      state: directory
+
+   - pause: seconds=10
+
+   - name: mount ecs file
+     mount:
+      path: /data
+      src: /dev/xvdh
+      state: mounted
+      fstype: ext4
+
+   - name: make website dir
+     file: 
+      path: /data/www 
+      state: directory
+
+   - name: make /data/www/index.html
+     copy:
+      content: "coming soon"
+      dest: /data/www/index.html
+      force: no
+
+   - name: make /etc/nginx/sites-available/test.html
+     copy:
+      content: ""
+      dest: /etc/nginx/sites-available/test.html
+      force: no
+
+   - pause: seconds=5
+
+   - name: configure website
+     blockinfile: 
+      dest: /etc/nginx/sites-available/test.html
+      block: |
+       server {
+       listen 80 default_server;
+       listen [::]:80 default_server;
+        location /index.html {
+        return 200 "Feed me a stray cat";
+        }
+       }
+
+   - name: create symlink
+     file:
+      src: "/etc/nginx/sites-available/test.html"
+      dest: "/etc/nginx/sites-enabled/test.html"
+      state: link
+
+   - name: remove default
+     file:
+      path: "/etc/nginx/sites-available/default"
+      state: absent
+
+   - name: remove default
+     file:
+      path: "/etc/nginx/sites-enabled/default"
+      state: absent
+
+   - pause: seconds=5
+
+   - name: restart nginx
+     service: name=nginx state=restarted
+
+   - name: make website backup dir
+     file: 
+      path: /data/websitebackup
+      state: directory
+
+   - name: make website restore-image dir
+     file: 
+      path: /data/restore-image
+      state: directory
+
+   - name: make copy aws config
+     synchronize:
+      src: /home/ghost/.aws/
+      dest: /home/ubuntu/.aws/
+
+   - name: cron website backup+date copy
+     cron: 
+      name: copy website unique
+      user: ubuntu
+      cron_file: /etc/crontab
+      minute: "55"
+      job: "sudo cp /etc/nginx/sites-available/test.html /data/websitebackup/test.html+$(date +%H:%M-%d-%m-%y)"
+
+   - name: cron website backup copy
+     cron: 
+      name: copy website
+      user: ubuntu
+      cron_file: /etc/crontab
+      minute: "56"
+      job: "sudo cp /etc/nginx/sites-available/test.html /data/websitebackup/test.html"
+
+   - name: cron website backup copy to s3
+     cron: 
+      name: copy website to s3
+      user: ubuntu
+      cron_file: /etc/crontab
+      minute: "0"
+      job: "aws s3 cp /data/websitebackup/ s3://ghost-terraform-test/ --recursive --acl bucket-owner-full-control"
+
+

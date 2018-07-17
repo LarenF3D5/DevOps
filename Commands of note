@@ -1,0 +1,8 @@
+Get file from AWS:
+sudo aws s3 cp s3://ghost-terraform-test/test.html /data/restore-image/
+
+SSH to box:
+sudo ssh -i /home/ghost/Downloads/Testing.pem ubuntu@52.21.252.76
+
+crontab:
+/etc/crontab
